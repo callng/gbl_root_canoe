@@ -1,12 +1,10 @@
 
 #!/usr/bin/env bash
-
+./clean.sh
 # Re-exec with bash when invoked as "sh build.sh".
 if [ -z "${BASH_VERSION:-}" ]; then
   exec bash "$0" "$@"
 fi
-
-set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
@@ -26,7 +24,7 @@ else
 fi
 
 cd edk2
-source edksetup.sh --reconfig
+source edksetup.sh
 make BOARD_BOOTLOADER_PRODUCT_NAME=canoe TARGET_ARCHITECTURE=AARCH64 TARGET=RELEASE \
   CLANG_BIN=/usr/bin/ CLANG_PREFIX=aarch64-linux-gnu- VERIFIED_BOOT_ENABLED=1 \
   VERIFIED_BOOT_LE=0 AB_RETRYCOUNT_DISABLE=0 TARGET_BOARD_TYPE_AUTO=0 \

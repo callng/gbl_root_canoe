@@ -1,5 +1,21 @@
+
+#!/usr/bin/env bash
 ./clean.sh
-cp -r ./Conf ./edk2/
+# Re-exec with bash when invoked as "sh build.sh".
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec bash "$0" "$@"
+fi
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT_DIR"
+
+if [ -d ./Conf ]; then
+  rm -rf ./edk2/Conf
+  cp -r ./Conf ./edk2/
+else
+  mkdir -p ./edk2/Conf
+fi
+
 cd edk2
 source edksetup.sh
 make BOARD_BOOTLOADER_PRODUCT_NAME=canoe TARGET_ARCHITECTURE=AARCH64 TARGET=RELEASE \
@@ -10,4 +26,7 @@ make BOARD_BOOTLOADER_PRODUCT_NAME=canoe TARGET_ARCHITECTURE=AARCH64 TARGET=RELE
   PREBUILT_HOST_TOOLS="BUILD_CC=clang BUILD_CXX=clang++ LDPATH=-fuse-ld=lld BUILD_AR=llvm-ar"
 cd ../
 cp edk2/Build/RELEASE_CLANG35/AARCH64/LinuxLoader.efi ./dist/superfastboot.efi
+if [ -f ./dist/patch_log.txt ]; then
+  cat ./dist/patch_log.txt
+fi
 ls -l ./dist
