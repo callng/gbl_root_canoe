@@ -1,11 +1,5 @@
-=======
-=======
-#DO NOT USE abl_original.efi It is just intermediate result from patcher which contains the official abl efi progress which will boot efisp causing bootloop
-=======
-# DO NOT USE abl_original.efi It is just intermediate result from patcher which contains the official abl efi progress which will boot efisp causing bootloop
->>>>>>> 24b3827 (Fix formatting in README.md warning about abl_original.efi)
+# DO NOT USE abl_original.efi It is just intermediate result from patcher which contains the official abl efi program which will boot efisp causing bootloop
 
->>>>>>> aaa8cd9 (Add warning for abl_original.efi usage)
 # build with CLAND/LLD version 20
 # GBL Root Canoe
 
