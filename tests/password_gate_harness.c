@@ -132,9 +132,14 @@ int main (void) {
   CHECK (SfbAuthRequest ());
   reset ("123456");
   SfbAuthInitialize ();
-  type ("12345"); choose (11); /* Too short: does not consume an attempt. */
-  type ("6"); choose (11);
-  CHECK (SfbAuthRequest () && mFailures == 0);
+  submit ("12345"); submit ("123456");
+  CHECK (SfbAuthRequest () && mFailures == 1);
+  reset ("123456");
+  SfbAuthInitialize ();
+  submit ("1"); submit ("12"); submit ("12345"); submit ("123456");
+  CHECK (!SfbAuthRequest () && mFailures == 3 && !SfbAuthIsUnlocked ());
+  CHECK (KeyAt < KeyCount); /* A queued fourth confirmation is never read. */
+  CHECK (!SfbAuthRequest () && mFailures == 3);
   reset ("123456");
   SfbAuthInitialize ();
   submit ("000000"); submit ("000000"); submit ("000000"); submit ("123456");
@@ -153,6 +158,6 @@ int main (void) {
   SfbAuthInitialize ();
   choose (11);
   CHECK (!SfbAuthRequest () && mFailures == 0); /* Empty confirmation. */
-  puts ("UEFI gate: no-password bypass, invalid-file denial, storage identity, leading zeros, 64 digits, delete, short input, three-error lockout, empty input, cancel and timeout passed");
+  puts ("UEFI authentication: no-password bypass, invalid-file denial, storage identity, leading zeros, 64 digits, delete, short-password failures, three-error lockout, empty input, cancel and timeout passed");
   return 0;
 }

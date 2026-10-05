@@ -134,12 +134,16 @@ SfbAuthRequest (VOID)
       break;
     } else if (Length == 0) {
       break; /* Confirm with no password: Android, never privileged access. */
-    } else if (Length >= SFB_PIN_MIN_DIGITS) {
+    } else {
       UINT8 Digest[32];
-      UINT8 Difference = 0;
-      if (!SfbPasswordHash (mSalt, Input, Length, Digest)) break;
-      for (Index = 0; Index < sizeof (Digest); Index++)
-        Difference |= (UINT8)(Digest[Index] ^ mDigest[Index]);
+      UINT8 Difference = 1;
+      /* The minimum length applies when setting a password, not to whether
+       * a nonempty confirmation consumes an attempt. Short input is wrong. */
+      if (SfbPasswordHash (mSalt, Input, Length, Digest)) {
+        Difference = 0;
+        for (Index = 0; Index < sizeof (Digest); Index++)
+          Difference |= (UINT8)(Digest[Index] ^ mDigest[Index]);
+      }
       ZeroMem (Digest, sizeof (Digest));
       ZeroMem (Input, sizeof (Input));
       if (Difference == 0) {
@@ -151,7 +155,8 @@ SfbAuthRequest (VOID)
       mFailures++;
       Length = 0;
       Cursor = 0;
-      SfbBeginScreen (L"Incorrect password", NULL);
+      SfbBeginScreen (L"Incorrect password",
+                     mFailures >= SFB_PASSWORD_ATTEMPTS ? L"Booting Android..." : NULL);
       Print (L"%u attempt(s) remaining.\r\n",
              (UINT32)(SFB_PASSWORD_ATTEMPTS - mFailures));
       SfbDebounceMenuExit ();
