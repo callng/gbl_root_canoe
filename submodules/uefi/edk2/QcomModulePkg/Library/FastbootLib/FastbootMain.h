@@ -58,6 +58,11 @@ EFI_STATUS HandleUsbEvents (VOID);
 EFI_STATUS FastbootUsbDeviceStop (VOID);
 EFI_STATUS FastbootInitialize (VOID);
 
+/* No callback means denied. Both USB startup and command dispatch check it. */
+typedef BOOLEAN (*FASTBOOT_AUTHORIZATION_CHECK)(VOID);
+VOID FastbootSetAuthorizationCheck (FASTBOOT_AUTHORIZATION_CHECK Check);
+BOOLEAN FastbootIsAuthorized (VOID);
+
 /*
  * Ask the fastboot loop to end and hand control back to the boot menu. Safe to
  * call from a command handler: the loop observes the request after the current

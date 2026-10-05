@@ -14,6 +14,19 @@ const state = {
 const i18n = {
   zh: {
     pageTitle: "假回锁 - BL Flasher",
+    passwordTitle: "Superfastboot 密码保护",
+    passwordHint: "设置 6–64 位数字密码后，进入 Superfastboot 需要验证；未设置密码时无需验证。未通过验证或本次开机输错三次，只能启动安卓。正常启动安卓和输入超时均无需密码。设置在下次开机生效。",
+    passwordNew: "新密码",
+    passwordRepeat: "再次输入",
+    passwordSave: "保存密码",
+    passwordClear: "清除密码（关闭密码保护）",
+    passwordStates: { configured: "已启用密码保护", missing: "未设置密码", invalid: "密码文件无效：仅安卓", unavailable: "persist 未挂载", unknown: "尚未检测" },
+    passwordInvalid: "请输入相同的 6–64 位数字密码。",
+    passwordSaved: "密码已保存，下次开机生效。",
+    passwordCleared: "密码已清除，下次开机关闭密码保护。",
+    passwordClearConfirm: "清除密码后，下次开机无需密码即可进入 Superfastboot。确认关闭密码保护？",
+    passwordErrors: { invalid: "密码必须是 6–64 位数字", busy: "任务运行中，请稍后再试", unmounted: "persist 未挂载", "not-installed": "请先完成假回锁安装", crypto: "随机数或 SHA-256 工具不可用", io: "密码文件写入失败" },
+    passwordFailed: "密码操作失败",
     ksuWebUI: "KernelSU Module WebUI",
     heroDesc: "自动识别当前活动槽位，若新版本存在GBL漏洞则跳过BL刷写；将BL镜像刷写到另一槽位，并将破解ABL放入persist的efisp目录、BDS刷入efisp分区",
     slotStatus: "槽位状态",
@@ -72,6 +85,19 @@ const i18n = {
   },
   en: {
     pageTitle: "Fake Lock - BL Flasher",
+    passwordTitle: "Superfastboot Password Protection",
+    passwordHint: "Set a 6–64 digit password to require verification before entering Superfastboot. No password means no verification. Failed verification or three errors in one boot permits only Android. Normal Android boot and input timeout need no password. Changes take effect next boot.",
+    passwordNew: "New password",
+    passwordRepeat: "Repeat password",
+    passwordSave: "Save password",
+    passwordClear: "Clear password (disable protection)",
+    passwordStates: { configured: "Password protection enabled", missing: "No password set", invalid: "Invalid password file: Android only", unavailable: "persist not mounted", unknown: "Not checked" },
+    passwordInvalid: "Enter matching passwords of 6–64 digits.",
+    passwordSaved: "Password saved. Effective on the next boot.",
+    passwordCleared: "Password cleared. Protection disabled on the next boot.",
+    passwordClearConfirm: "Clearing the password allows entry to Superfastboot without verification on the next boot. Disable password protection?",
+    passwordErrors: { invalid: "Password must be 6–64 digits", busy: "A task is running; try later", unmounted: "persist is not mounted", "not-installed": "Complete fake-lock installation first", crypto: "Random source or SHA-256 tool unavailable", io: "Password file write failed" },
+    passwordFailed: "Password operation failed",
     ksuWebUI: "KernelSU Module WebUI",
     heroDesc: "Auto-detect active slot. Skip BL flash if new build has GBL exploit. Flash BL images to inactive slot, place the cracked ABL in persist's efisp dir and flash the BDS to the efisp partition.",
     slotStatus: "Slot Status",
@@ -150,7 +176,14 @@ const elements = {
   cancelConfirmButton: document.getElementById("cancelConfirmButton"),
   updateEfispCheckbox: document.getElementById("updateEfispCheckbox"),
   debugModeCheckbox: document.getElementById("debugModeCheckbox"),
-  pageTitle: document.getElementById("pageTitle")
+  pageTitle: document.getElementById("pageTitle"),
+  passwordForm: document.getElementById("passwordForm"),
+  passwordInput: document.getElementById("passwordInput"),
+  passwordRepeatInput: document.getElementById("passwordRepeatInput"),
+  passwordStatus: document.getElementById("passwordStatus"),
+  passwordMessage: document.getElementById("passwordMessage"),
+  savePasswordButton: document.getElementById("savePasswordButton"),
+  clearPasswordButton: document.getElementById("clearPasswordButton")
 };
 
 function applyLanguage(lang) {
@@ -299,6 +332,9 @@ function renderStatus(status) {
   elements.flashButton.disabled = run || cur === "-" || tar === "-";
   elements.bdsToolsButton.disabled = run;
   elements.clearLogButton.disabled = run;
+  elements.savePasswordButton.disabled = run || !state.moduleDir;
+  elements.clearPasswordButton.disabled = run || !state.moduleDir;
+  elements.passwordStatus.textContent = t.passwordStates[status.PASSWORD_STATE] || t.passwordStates.unknown;
   renderTable(cur, tar);
 }
 
@@ -434,6 +470,40 @@ function clearLog() {
   manualRefresh();
 }
 
+function savePassword(event) {
+  event.preventDefault();
+  const t = i18n[state.lang];
+  const password = elements.passwordInput.value;
+  if (!/^[0-9]{6,64}$/.test(password) || password !== elements.passwordRepeatInput.value) {
+    elements.passwordMessage.textContent = t.passwordInvalid;
+    return;
+  }
+  try {
+    const out = parseKeyValueOutput(runScript("set-password", password));
+    elements.passwordMessage.textContent = out.PASSWORD_SAVED === "1"
+      ? t.passwordSaved : (t.passwordErrors[out.PASSWORD_ERROR] || t.passwordFailed);
+  } catch (e) {
+    elements.passwordMessage.textContent = t.passwordFailed;
+  } finally {
+    elements.passwordForm.reset();
+  }
+  manualRefresh();
+}
+
+function clearPassword() {
+  const t = i18n[state.lang];
+  if (!window.confirm(t.passwordClearConfirm)) return;
+  try {
+    const out = parseKeyValueOutput(runScript("clear-password"));
+    elements.passwordMessage.textContent = out.PASSWORD_CLEARED === "1"
+      ? t.passwordCleared : (t.passwordErrors[out.PASSWORD_ERROR] || t.passwordFailed);
+  } catch (e) {
+    elements.passwordMessage.textContent = t.passwordFailed;
+  }
+  elements.passwordForm.reset();
+  manualRefresh();
+}
+
 function poll() {
   const s = refreshStatus();
   if (s?.RUNNING === "1") refreshLog();
@@ -467,10 +537,14 @@ async function init() {
     elements.flashButton.disabled = true;
     elements.bdsToolsButton.disabled = true;
     elements.clearLogButton.disabled = true;
+    elements.savePasswordButton.disabled = true;
+    elements.clearPasswordButton.disabled = true;
     return;
   }
 
   elements.refreshButton.addEventListener("click", manualRefresh);
+  elements.passwordForm.addEventListener("submit", savePassword);
+  elements.clearPasswordButton.addEventListener("click", clearPassword);
   elements.flashButton.addEventListener("click", () => openConfirmModal("flash"));
   elements.bdsToolsButton.addEventListener("click", () => openConfirmModal("bds-tools"));
   elements.clearLogButton.addEventListener("click", clearLog);

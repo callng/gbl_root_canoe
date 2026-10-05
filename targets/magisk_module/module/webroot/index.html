@@ -69,6 +69,29 @@
       </p>
     </section>
 
+    <section class="panel password-panel">
+      <div class="panel-heading">
+        <h2 data-i18n="passwordTitle">Superfastboot 密码保护</h2>
+        <span class="caption" id="passwordStatus" role="status"></span>
+      </div>
+      <p data-i18n="passwordHint">设置 6–64 位数字密码后，进入 Superfastboot 需要验证；未设置密码时无需验证。未通过验证或本次开机输错三次，只能启动安卓。正常启动安卓和输入超时均无需密码。设置在下次开机生效。</p>
+      <form id="passwordForm" autocomplete="off">
+        <label class="password-field">
+          <span data-i18n="passwordNew">新密码</span>
+          <input id="passwordInput" type="password" inputmode="numeric" pattern="[0-9]{6,64}" minlength="6" maxlength="64" required autocomplete="new-password" />
+        </label>
+        <label class="password-field">
+          <span data-i18n="passwordRepeat">再次输入</span>
+          <input id="passwordRepeatInput" type="password" inputmode="numeric" pattern="[0-9]{6,64}" minlength="6" maxlength="64" required autocomplete="new-password" />
+        </label>
+        <div class="action-strip">
+          <button class="primary-button" id="savePasswordButton" type="submit" data-i18n="passwordSave">保存密码</button>
+          <button class="ghost-button" id="clearPasswordButton" type="button" data-i18n="passwordClear">清除密码（关闭密码保护）</button>
+        </div>
+      </form>
+      <p id="passwordMessage" role="status" aria-live="polite"></p>
+    </section>
+
     <section class="panel map-panel">
       <div class="panel-heading">
         <h2 id="lblImageMap">镜像映射</h2>

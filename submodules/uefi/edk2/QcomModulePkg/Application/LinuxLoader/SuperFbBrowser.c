@@ -9,6 +9,7 @@
  */
 
 #include "SuperFbMenu.h"
+#include "SuperFbAuth.h"
 
 #include <Library/BaseLib.h>
 #include <Library/BaseMemoryLib.h>
@@ -419,6 +420,7 @@ SfbBrowseVolume (IN EFI_HANDLE   Volume,
   BOOLEAN        Truncated = FALSE;
   BOOLEAN        Reload = TRUE;
 
+  if (!SfbAuthIsUnlocked ()) return FALSE;
   List = AllocateZeroPool (SFB_MAX_DIR_ENTRIES * sizeof (*List));
   if (List == NULL) {
     SfbReportStatus (L"Out of memory", EFI_OUT_OF_RESOURCES);
@@ -566,6 +568,7 @@ SfbRunFileBrowser (VOID)
   UINTN           Cursor = 0;
   UINTN           Index;
 
+  if (!SfbAuthIsUnlocked ()) return;
   SfbShowEnteringScreen (L"File Browser");
 
   /* Media may have been inserted since the loader started. */

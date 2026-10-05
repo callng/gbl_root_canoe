@@ -72,7 +72,15 @@ Then complete the install manually (see the [Wiki](https://github.com/superturtl
 Before rebooting for an OTA update, use the module WebUI to flash and retain the old ABL version. "Update efisp" is enabled by default; for a major version upgrade keep it on, otherwise the device may get stuck on the first boot screen.
 
 ### 4. Superfastboot Usage Instructions
-When OEM Unlocking is enabled and the white warning text appears on boot, press **Volume Down** to enter Superfastboot mode (the BDS).
+The module WebUI's **Superfastboot Password Protection** sets a **6–64 digit password**, confirmed twice, effective on the next boot. Verification happens before entry to the entire interactive Superfastboot environment, including the boot menu, other operating systems, file browser, USB exports and Fastboot. `/mnt/vendor/persist/efisp/menu_password` sits beside the patched `boot.efi` and stores only a random 16-byte salt and SHA-256 digest with mode `0600`. Plaintext passwords are never written to files or module logs. Module/OTA updates preserve this file.
+
+**No password disables password protection and preserves the existing saved-default behavior; setting a password enables it.** With password protection enabled, unattended boot launches the internal persist partition's `efisp/boot.efi` without a password. **Volume Up** requests verification before the boot menu. Use volume keys to choose **0–9, delete one digit, confirm password, or boot Android**, and power to confirm. Fewer than six digits do not count as an error. Three failures accumulated in one boot, empty confirmation, invalid credentials, cancellation, or 30 seconds of input inactivity take the Android-only path. Clearing the password disables password protection on the next boot. Password I/O failures are not treated as an absent password.
+
+With password protection enabled, saved defaults cannot boot another OS before verification and `DRIVER.LIST` is not loaded. The boot menu, EFI/driver loading, volume browser, USB exports, Fastboot USB startup and every BDS Fastboot command dispatch check authorization. A failed/returned launch follows the original menu path, with verification required before entry. If verification is unavailable and Android cannot launch, the loader follows the original cleanup and return to the calling firmware, without an added infinite loop.
+
+This password protection controls this project's BDS, not the vendor ABL's independent Fastboot/Recovery, other firmware, or Root modifications to persist. The existing ABL patch still enables vendor Fastboot. A six-digit digest is susceptible to offline enumeration if the file is read; longer passwords increase that cost.
+
+After verification, use **Advanced → Enter Fastboot** to enter Superfastboot.
 Common commands include:
 - **Temp-boot an EFI file (without flashing)**: `fastboot boot xxx.efi`
 - **Lock and Unlock (BL related)**:

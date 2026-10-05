@@ -2517,6 +2517,10 @@ AcceptCmd (IN UINT64 Size, IN CHAR8 *Data)
   FASTBOOT_CMD *cmd;
   CHAR8 FlashResultStr[MAX_RSP_SIZE] = "\0";
 
+  if (!FastbootIsAuthorized ()) {
+    FastbootFail ("Boot menu password required");
+    return;
+  }
   if (!Data) {
     FastbootFail ("Invalid input command");
     return;

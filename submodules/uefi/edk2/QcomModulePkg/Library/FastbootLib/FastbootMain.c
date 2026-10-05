@@ -527,10 +527,23 @@ FastbootPollActionKey (VOID)
   }
 }
 
+STATIC FASTBOOT_AUTHORIZATION_CHECK mAuthorizationCheck;
+
+VOID FastbootSetAuthorizationCheck (FASTBOOT_AUTHORIZATION_CHECK Check)
+{
+  mAuthorizationCheck = Check;
+}
+
+BOOLEAN FastbootIsAuthorized (VOID)
+{
+  return mAuthorizationCheck != NULL && mAuthorizationCheck ();
+}
+
 EFI_STATUS FastbootInitialize (VOID)
 {
   EFI_STATUS Status = EFI_SUCCESS;
 
+  if (!FastbootIsAuthorized ()) return EFI_ACCESS_DENIED;
   DEBUG ((EFI_D_INFO, "Fastboot Build Info: %a %a\n", __DATE__, __TIME__));
 
   /* Start the USB device enumeration */

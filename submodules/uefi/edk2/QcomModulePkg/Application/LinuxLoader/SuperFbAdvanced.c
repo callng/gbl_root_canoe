@@ -18,6 +18,7 @@
 
 #include "SuperFbAdvanced.h"
 #include "SuperFbMenu.h"
+#include "SuperFbAuth.h"
 #include "SuperFbSynthDisk.h"
 #include "SuperFbUsbMsd.h"
 
@@ -1075,6 +1076,7 @@ SfbRunAdvancedMenu (VOID)
   };
   INTN Chosen;
 
+  if (!SfbAuthIsUnlocked ()) return FALSE;
   SfbShowEnteringScreen (L"Advanced");
 
   while (TRUE) {

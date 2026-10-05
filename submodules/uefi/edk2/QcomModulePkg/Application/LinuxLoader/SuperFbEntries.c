@@ -10,6 +10,7 @@
  */
 
 #include "SuperFbMenu.h"
+#include "SuperFbAuth.h"
 
 #include <Library/BaseLib.h>
 #include <Library/BaseMemoryLib.h>
@@ -978,6 +979,7 @@ SfbLoadDriver (IN EFI_HANDLE Volume, IN CONST CHAR16 *Path)
   EFI_DEVICE_PATH_PROTOCOL  *DevicePath;
   EFI_HANDLE                ImageHandle = NULL;
 
+  if (!SfbAuthIsUnlocked ()) return EFI_ACCESS_DENIED;
   if (Volume == NULL || Path == NULL || Path[0] == L'\0') {
     return EFI_INVALID_PARAMETER;
   }
@@ -1116,10 +1118,12 @@ SfbPreloadDrivers (IN EFI_HANDLE Volume, IN CONST CHAR16 *EntryPath)
   }
 }
 
+STATIC
 EFI_STATUS
-SfbLaunchEntry (IN CONST SFB_BOOT_ENTRY *Entry,
-                IN BOOLEAN              Temporary,
-                IN BOOLEAN              ClearScreen)
+SfbLaunchEntryInternal (IN CONST SFB_BOOT_ENTRY *Entry,
+                        IN BOOLEAN Temporary,
+                        IN BOOLEAN ClearScreen,
+                        IN BOOLEAN AndroidOnly)
 {
   EFI_STATUS  Status;
   EFI_HANDLE  ImageHandle = NULL;
@@ -1152,7 +1156,7 @@ SfbLaunchEntry (IN CONST SFB_BOOT_ENTRY *Entry,
    * so a loader that needs, say, a file-system or graphics driver present finds
    * it already bound before it starts.
    */
-  SfbPreloadDrivers (Entry->Volume, Entry->Path);
+  if (!AndroidOnly) SfbPreloadDrivers (Entry->Volume, Entry->Path);
 
   SfbBypassSecurity();
   Status = gBS->LoadImage (FALSE, gImageHandle, Entry->DevicePath,
@@ -1198,12 +1202,39 @@ SfbLaunchEntry (IN CONST SFB_BOOT_ENTRY *Entry,
   return Status;
 }
 
+EFI_STATUS
+SfbLaunchEntry (IN CONST SFB_BOOT_ENTRY *Entry,
+                IN BOOLEAN Temporary, IN BOOLEAN ClearScreen)
+{
+  if (!SfbAuthIsUnlocked ()) return EFI_ACCESS_DENIED;
+  return SfbLaunchEntryInternal (Entry, Temporary, ClearScreen, FALSE);
+}
+
+EFI_STATUS
+SfbLaunchAndroid (IN BOOLEAN ClearScreen)
+{
+  EFI_HANDLE Volume;
+  SFB_BOOT_ENTRY Entry;
+  EFI_STATUS Status = SfbGetPersistVolume (&Volume);
+  if (EFI_ERROR (Status)) return Status;
+  Status = SfbMakeFileEntry (Volume, L"\\efisp\\boot.efi", L"Android", &Entry);
+  if (EFI_ERROR (Status)) return Status;
+  /* No saved default, arguments, BOOTENTRIES or DRIVER.LIST are consulted. */
+  Status = SfbLaunchEntryInternal (&Entry, TRUE, ClearScreen, TRUE);
+  SfbFreeEntry (&Entry);
+  return Status;
+}
+
 BOOLEAN
 SfbLaunchDefaultEntry (VOID)
 {
   SFB_MENU_STATE  Menu;
   BOOLEAN         HasDefault;
 
+  if (!SfbAuthIsUnlocked ()) {
+    SfbLaunchAndroid (FALSE);
+    return FALSE;
+  }
   SfbBuildMenu (&Menu);
 
   /* Only a stored default boots unattended: the first-entry fallback that

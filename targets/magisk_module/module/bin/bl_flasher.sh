@@ -91,6 +91,7 @@ RUNTIME_DIR="$MODDIR/tmp"
 BY_NAME_DIR="/dev/block/by-name"
 PERSIST_MNT="/mnt/vendor/persist"
 EFISP_DIR="$PERSIST_MNT/efisp"
+PASSWORD_FILE="$EFISP_DIR/menu_password"
 BDS_EFI="$MODDIR/BDS.efi"
 IMAGE_NAMES="abl"
 LOG_FILE="$RUNTIME_DIR/flash.log"
@@ -158,6 +159,63 @@ current_pid() {
 # see it. In debug mode the boot root is staged under the module tmp dir
 # instead, so this check does not apply.
 persist_mounted() { grep -q " $PERSIST_MNT " /proc/mounts; }
+
+# Shared format with SuperFbPassword.c. Only a random salt and digest ever
+# reach disk; no PIN is written to logs, state files or temporary files.
+password_status() {
+  if ! persist_mounted; then echo unavailable; return; fi
+  if [ ! -f "$PASSWORD_FILE" ]; then echo missing; return; fi
+  if [ -L "$PASSWORD_FILE" ]; then echo invalid; return; fi
+  password_bytes=$(wc -c < "$PASSWORD_FILE" | tr -d '[:space:]')
+  case "$password_bytes" in 104|105) ;; *) echo invalid; return ;; esac
+  if LC_ALL=C grep -Eq '^SFBPW1:[0-9a-f]{32}:[0-9a-f]{64}$' "$PASSWORD_FILE"; then
+    echo configured
+  else
+    echo invalid
+  fi
+}
+
+set_password() (
+  password_pin=$1
+  case "$password_pin" in ''|*[!0-9]*) emit 'PASSWORD_ERROR=invalid'; exit 1 ;; esac
+  [ "${#password_pin}" -ge 6 ] && [ "${#password_pin}" -le 64 ] || { emit 'PASSWORD_ERROR=invalid'; exit 1; }
+  persist_mounted || { emit 'PASSWORD_ERROR=unmounted'; exit 1; }
+  [ -d "$EFISP_DIR" ] && [ ! -L "$EFISP_DIR" ] && [ -f "$EFISP_DIR/boot.efi" ] || {
+    emit 'PASSWORD_ERROR=not-installed'; exit 1;
+  }
+  ensure_runtime
+  mkdir "$LOCK_DIR" 2>/dev/null || { emit 'PASSWORD_ERROR=busy'; exit 1; }
+  password_tmp=
+  trap '[ -z "$password_tmp" ] || rm -f "$password_tmp"; rmdir "$LOCK_DIR"' EXIT
+  trap 'exit 1' INT TERM HUP
+  umask 077
+  password_salt=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | od -An -tx1 | tr -d '[:space:]')
+  case "$password_salt" in ''|*[!0-9a-f]*) emit 'PASSWORD_ERROR=crypto'; exit 1 ;; esac
+  [ "${#password_salt}" -eq 32 ] || { emit 'PASSWORD_ERROR=crypto'; exit 1; }
+  password_digest=$(printf '%s%s' "$password_salt" "$password_pin" | sha256sum 2>/dev/null)
+  password_pin=
+  password_digest=${password_digest%% *}
+  case "$password_digest" in ''|*[!0-9a-f]*) emit 'PASSWORD_ERROR=crypto'; exit 1 ;; esac
+  [ "${#password_digest}" -eq 64 ] || { emit 'PASSWORD_ERROR=crypto'; exit 1; }
+  password_tmp=$(mktemp "$EFISP_DIR/.menu_password.XXXXXX") || { emit 'PASSWORD_ERROR=io'; exit 1; }
+  if ! printf 'SFBPW1:%s:%s\n' "$password_salt" "$password_digest" > "$password_tmp" ||
+     ! chmod 600 "$password_tmp" || ! sync || ! mv -f "$password_tmp" "$PASSWORD_FILE" || ! sync; then
+    emit 'PASSWORD_ERROR=io'; exit 1
+  fi
+  password_tmp=
+  emit 'PASSWORD_SAVED=1'
+)
+
+clear_password() (
+  persist_mounted || { emit 'PASSWORD_ERROR=unmounted'; exit 1; }
+  [ ! -L "$EFISP_DIR" ] || { emit 'PASSWORD_ERROR=io'; exit 1; }
+  ensure_runtime
+  mkdir "$LOCK_DIR" 2>/dev/null || { emit 'PASSWORD_ERROR=busy'; exit 1; }
+  trap 'rmdir "$LOCK_DIR"' EXIT
+  trap 'exit 1' INT TERM HUP
+  rm -f "$PASSWORD_FILE" && sync || { emit 'PASSWORD_ERROR=io'; exit 1; }
+  emit 'PASSWORD_CLEARED=1'
+)
 
 # Lay out the \efisp boot root from the bundled module efisp/ tree: BOOTENTRIES
 # (with its tools submenu link) plus the tools/ directory and its EFI applets.
@@ -347,6 +405,8 @@ STATE=$_state
 MESSAGE=$_msg
 UPDATED_AT=$_upd
 USER_LANG=$LANG"
+  out="$out
+PASSWORD_STATE=$(password_status)"
   emit "$out"
 }
 
@@ -464,5 +524,7 @@ case "$1" in
   log) print_log ;;
   tail) tail_log ;;
   clear-log) clear_log ;;
+  set-password) set_password "$2" ;;
+  clear-password) clear_password ;;
   *) exit 1 ;;
 esac

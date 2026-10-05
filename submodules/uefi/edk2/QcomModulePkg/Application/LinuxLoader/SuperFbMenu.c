@@ -10,6 +10,7 @@
 
 #include "SuperFbMenu.h"
 #include "SuperFbAdvanced.h"
+#include "SuperFbAuth.h"
 
 #include <Library/BaseLib.h>
 #include <Library/BaseMemoryLib.h>
@@ -42,14 +43,14 @@ SfbWaitForKey (IN UINT32 TimeoutMs)
   if (TimeoutMs != 0) {
     Status = gBS->CreateEvent (EVT_TIMER, TPL_CALLBACK, NULL, NULL, &TimerEvent);
     if (EFI_ERROR (Status)) {
-      TimerEvent = NULL;
+      return SfbKeyTimeout;
     } else {
       /* Boot services timers count in 100ns units. */
       Status = gBS->SetTimer (TimerEvent, TimerRelative,
                               (UINT64)TimeoutMs * 10000);
       if (EFI_ERROR (Status)) {
         gBS->CloseEvent (TimerEvent);
-        TimerEvent = NULL;
+        return SfbKeyTimeout;
       }
     }
   }
@@ -454,6 +455,7 @@ SfbRunBootMenu (VOID)
   SFB_KEY         Key;
   EFI_STATUS      Status;
 
+  if (!SfbAuthIsUnlocked ()) return FALSE;
   ZeroMem (&Menu, sizeof (Menu));
   Menu.DefaultIndex = SFB_NO_INDEX;
 

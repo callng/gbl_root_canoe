@@ -71,6 +71,10 @@
 [Sources]
 	LinuxLoader.c
 	SuperFbMenu.h
+	SuperFbAuth.h
+	SuperFbAuth.c
+	SuperFbPassword.h
+	SuperFbPassword.c
 	SuperFbFat.c
 	SuperFbStore.c
 	SuperFbEntries.c

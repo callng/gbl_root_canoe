@@ -12,6 +12,7 @@
 
 #include "SuperFbUsbMsd.h"
 #include "SuperFbMenu.h"
+#include "SuperFbAuth.h"
 
 #include <Library/BaseLib.h>
 #include <Library/BaseMemoryLib.h>
@@ -150,6 +151,7 @@ SfbUsbMsdExportBlkIo (IN EFI_BLOCK_IO_PROTOCOL *BlkIo,
   BOOLEAN               HostEjected = FALSE;
   UINT32                Consecutive = 0;
 
+  if (!SfbAuthIsUnlocked ()) return EFI_ACCESS_DENIED;
   if (BlkIo == NULL || BlkIo->Media == NULL || !BlkIo->Media->MediaPresent) {
     return EFI_NO_MEDIA;
   }

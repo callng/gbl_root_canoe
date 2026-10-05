@@ -19,6 +19,13 @@
   --radius-md: 16px;
 }
 
+.password-panel { grid-column: 1 / -1; }
+.password-field { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
+.password-field input {
+  width: 100%; max-width: 320px; padding: 12px; border-radius: 12px;
+  border: 1px solid rgba(80, 55, 34, 0.25); font: inherit;
+}
+
 * {
   box-sizing: border-box;
 }

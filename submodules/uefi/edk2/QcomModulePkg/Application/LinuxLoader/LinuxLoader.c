@@ -78,6 +78,7 @@
 #include <Protocol/EFICardInfo.h>
 #include <Protocol/SimpleTextIn.h>
 #include "SuperFbMenu.h"
+#include "SuperFbAuth.h"
 
 #define MAX_APP_STR_LEN 64
 #define MAX_NUM_FS 10
@@ -222,6 +223,7 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
 
   {
     UINT8  MenuRequested;
+    BOOLEAN AndroidAttempted = FALSE;
 
     /*
      * Scan for Volume Up held at power-on FIRST, before any other init disturbs
@@ -229,7 +231,7 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
      * for a genuine Volume Up press, skipping every other key (notably the
      * power key used to switch the device on) rather than being fooled by it.
      * Volume Up (the official recovery key slot) opens the boot menu; no Volume
-     * Up within the window launches the saved default entry.
+     * Up within the window launches the fixed Android entry.
      */
     MenuRequested = WaitForVolumeUpKey (1000);
     DEBUG ((EFI_D_INFO, "SFB: power-on volume-up detected=%u\n", MenuRequested));
@@ -240,20 +242,38 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
      */
     Status = SfbStartFatStack ();
     if (EFI_ERROR (Status)) {
-      /* Not fatal: the menu still offers fastboot and the program selector. */
+      /* Credential/Android volume resolution below still fails closed. */
       DEBUG ((EFI_D_ERROR, "Unable to start the FAT stack: %r\n", Status));
     }
 
+    SfbAuthInitialize ();
+    FastbootSetAuthorizationCheck (SfbAuthIsUnlocked);
+    /* No password preserves the existing saved-default behavior. With a
+     * configured gate, unattended boot always takes the fixed Android path. */
     if (!MenuRequested) {
-      /* No menu key: boot the saved default. This does not return on success;
-       * it only comes back if there is no saved default or the launch failed,
-       * in which case the menu is shown so the user is never stranded. */
-      SfbLaunchDefaultEntry ();
+      if (SfbAuthIsUnlocked ()) {
+        /* Preserve the original behavior: a returned default launch proceeds
+         * to the menu, rather than switching to a hard-coded Android path. */
+        SfbLaunchDefaultEntry ();
+      } else {
+        AndroidAttempted = TRUE;
+        Status = SfbLaunchAndroid (FALSE);
+        DEBUG ((EFI_D_ERROR, "Android loader returned: %r\n", Status));
+      }
+    }
+
+    /* As in the original loader, a failed/returned launch can proceed to the
+     * menu. Password protection applies to that entry as well. If verification
+     * is unavailable or declined, boot Android once, then use the original
+     * cleanup/error return path if it returns; never park in a busy loop. */
+    if (!SfbAuthRequest ()) {
+      if (!AndroidAttempted) Status = SfbLaunchAndroid (MenuRequested != 0);
+      goto stack_guard_update_default;
     }
 
     /*
-     * Reached here because the menu was requested, or there was no default to
-     * boot. Announce it and hold briefly so a still-held volume key is released
+     * Reached here only after a requested menu was authenticated. Hold briefly
+     * so a still-held volume key is released
      * before the menu takes input, then run the menu. It only returns TRUE when
      * the user picked fastboot; FALSE means the menu is done. Fastboot can be
      * exited back to the menu (its "Exit to menu" row or "exit" from the host),
@@ -276,17 +296,6 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
       /* Fastboot exited back to the menu; loop around and show it again. */
       DEBUG ((EFI_D_INFO, "Fastboot exited to the boot menu\n"));
     }
-  }
-
-#ifdef AUTO_VIRT_ABL
-  DEBUG ((EFI_D_INFO, "Rebooting the device.\n"));
-  RebootDevice (NORMAL_MODE);
-#endif
-  DEBUG ((EFI_D_INFO, "Launching fastboot\n"));
-  Status = FastbootInitialize ();
-  if (EFI_ERROR (Status)) {
-    DEBUG ((EFI_D_ERROR, "Failed to Launch Fastboot App: %d\n", Status));
-    goto stack_guard_update_default;
   }
 
 stack_guard_update_default:
