@@ -85,13 +85,18 @@ static void reset (const char *Pin) {
 }
 static void choose (UINTN Row) {
   while (TestCursor != Row) {
-    Keys[KeyCount++] = SfbKeyDown;
-    TestCursor = (TestCursor + 1) % 13;
+    if ((Row + 13 - TestCursor) % 13 <= (TestCursor + 13 - Row) % 13) {
+      Keys[KeyCount++] = SfbKeyDown;
+      TestCursor = (TestCursor + 1) % 13;
+    } else {
+      Keys[KeyCount++] = SfbKeyUp;
+      TestCursor = (TestCursor + 12) % 13;
+    }
   }
   Keys[KeyCount++] = SfbKeySelect;
 }
 static void type (const char *Pin) {
-  while (*Pin) { choose ((UINTN)(*Pin++ - '0')); TestCursor = 0; }
+  while (*Pin) choose ((UINTN)(*Pin++ - '0'));
 }
 static void submit (const char *Pin) { type (Pin); choose (11); TestCursor = 0; }
 #define CHECK(Condition) do { if (!(Condition)) { fprintf (stderr, "Failed at line %d: %s\n", __LINE__, #Condition); return 1; } } while (0)
@@ -122,6 +127,10 @@ int main (void) {
   CHECK (WatchdogTimeout == 300);
   SfbAuthInitialize ();
   CHECK (SfbAuthIsUnlocked ());
+  reset ("555456");
+  SfbAuthInitialize ();
+  submit ("555456"); /* Repeat, move up one, then down to nearby digits. */
+  CHECK (SfbAuthRequest () && SfbAuthIsUnlocked ());
   reset (Long);
   SfbAuthInitialize ();
   submit (Long);
