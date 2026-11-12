@@ -21,6 +21,9 @@ jobs:
       run: |
         echo "NDK_PATH=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
 
+    - name: Check freestanding security headers
+      run: python3 tests/test_sfb_security_build.py
+
     - name: Build Toolkits
       run: |
         make target_toolkit_linux

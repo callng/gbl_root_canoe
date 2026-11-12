@@ -25,6 +25,12 @@
   CryptoPkg/CryptoPkg.dec
   QcomModulePkg/QcomModulePkg.dec
 
+[BuildOptions]
+  # mbedtls headers require CryptoPkg's freestanding CRT types and limits.
+  # Library/Include is private to CryptoPkg, so this external consumer must
+  # add it explicitly instead of falling through to the host's libc headers.
+  GCC:*_*_*_CC_FLAGS = -I$(WORKSPACE)/CryptoPkg/Library/Include
+
 [LibraryClasses]
   BaseLib
   BaseMemoryLib
