@@ -87,19 +87,29 @@
   BaseMemoryLib|MdePkg/Library/BaseMemoryLib/BaseMemoryLib.inf
   LzmaDecompressLib|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf
 
-  # FAT stack linked into LinuxLoader so the boot menu can read FAT32 volumes
-  # even where the platform firmware publishes nothing above Block I/O. These
-  # are the stock EDK2 drivers, re-exported as library classes.
+  # Support stack for the read-only EXT4 driver below, linked into
+  # LinuxLoader. FAT volumes are handled by the platform firmware's own FAT
+  # driver; EnhancedFatDxe is deliberately not linked into this image.
   UnicodeCollationEngLib|MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishLib.inf
   DiskIoDxeLib|MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoLib.inf
-  FatDxeLib|FatPkg/EnhancedFatDxe/FatLib.inf
   # Read-only EXT4 driver, linked in alongside the FAT stack so the boot menu
-  # can mount the ext4 persist partition. Started by hand from SfbStartFatStack,
+  # can mount ext4 partitions. Started by hand from SfbStartFatStack,
   # exactly like the three above; it binds to Disk I/O handles the connect pass
   # has already built and installs Simple File System on the ext4 partition.
   Ext4DxeLib|Ext4Pkg/Ext4Dxe/Ext4DxeLib.inf
+  # Boot menu config store: the FAT container in efisp after the BDS image.
+  SfbConfigStoreLib|QcomModulePkg/Library/SfbConfigStoreLib/SfbConfigStoreLib.inf
+  # Security policy: SECURITY certs in the container, fastboot challenge
+  # authorization and PE image signature verification.
+  SfbSecurityLib|QcomModulePkg/Library/SfbSecurityLib/SfbSecurityLib.inf
   OrderedCollectionLib|MdePkg/Library/BaseOrderedCollectionRedBlackTreeLib/BaseOrderedCollectionRedBlackTreeLib.inf
   TimeBaseLib|EmbeddedPkg/Library/TimeBaseLib/TimeBaseLib.inf
+  # Security-boot crypto: mbedtls-backed BaseCryptLib (X.509 parse, RSA/ECDSA
+  # verify, SHA-256, PKCS#7). Trimmed mbedtls config keeps BDS under 1 MiB.
+  MbedTlsLib|CryptoPkg/Library/MbedTlsLib/MbedTlsLib.inf
+  BaseCryptLib|CryptoPkg/Library/BaseCryptLibMbedTls/BaseCryptLib.inf
+  RngLib|MdePkg/Library/BaseRngLibNull/BaseRngLibNull.inf
+  SynchronizationLib|MdePkg/Library/BaseSynchronizationLib/BaseSynchronizationLib.inf
 
 
 [LibraryClasses.ARM]

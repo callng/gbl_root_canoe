@@ -76,14 +76,13 @@
 	SuperFbPassword.h
 	SuperFbPassword.c
 	SuperFbFat.c
-	SuperFbStore.c
+	SuperFbEntryList.h
+	SuperFbEntryList.c
 	SuperFbEntries.c
 	SuperFbMenu.c
 	SuperFbBrowser.c
 	SuperFbAdvanced.h
 	SuperFbAdvanced.c
-	SuperFbImageDisk.h
-	SuperFbImageDisk.c
 	SuperFbSynthDisk.h
 	SuperFbSynthDisk.c
 	SuperFbUsbMsd.h
@@ -96,7 +95,7 @@
 	ArmPlatformPkg/ArmPlatformPkg.dec
 	MdeModulePkg/MdeModulePkg.dec
 	QcomModulePkg/QcomModulePkg.dec
-	FatPkg/FatPkg.dec
+	CryptoPkg/CryptoPkg.dec
 	Ext4Pkg/Ext4Pkg.dec
 
 [LibraryClasses]
@@ -114,14 +113,17 @@
 	PrintLib
 	MemoryAllocationLib
 	UefiRuntimeServicesTableLib
-	# FAT stack carried inside the image: the boot menu starts these by hand
-	# instead of relying on a DXE dispatcher to do it.
+	# Support stack for the read-only EXT4 driver, started by hand. FAT comes
+	# from the platform firmware's own driver, so EnhancedFatDxe is omitted.
 	UnicodeCollationEngLib
 	DiskIoDxeLib
-	FatDxeLib
-	# Read-only EXT4 driver started the same way, to mount the ext4 persist
-	# partition and expose its \efisp directory as a boot volume.
+	# Read-only EXT4 driver started the same way, so ext4 partitions are
+	# scanned and browsed like FAT volumes.
 	Ext4DxeLib
+	# FAT config container in the efisp partition after the BDS image.
+	SfbConfigStoreLib
+	# Security policy: certs, challenge auth, image verification.
+	SfbSecurityLib
 
 [LibraryClasses.AARCH64]
 
@@ -153,10 +155,11 @@
 	gEfiUfsLU7Guid
         gEfiNvme0Guid
 	gEfiFileSystemVolumeLabelInfoIdGuid
-	# Identifies the ESP whose tail holds the boot menu's settings.
+	# Partition type of the config store's synthesized GPT on USB export.
 	gEfiPartTypeSystemPartGuid
 
 [Protocols]
+	gSfbSecureBootProtocolGuid
 	gEfiSimpleTextInputExProtocolGuid
 	gEfiBlockIoProtocolGuid
 	gEfiLoadedImageProtocolGuid

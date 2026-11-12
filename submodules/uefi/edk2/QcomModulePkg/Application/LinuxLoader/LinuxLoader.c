@@ -79,6 +79,8 @@
 #include <Protocol/SimpleTextIn.h>
 #include "SuperFbMenu.h"
 #include "SuperFbAuth.h"
+#include <Library/SfbConfigStore.h>
+#include <Library/SfbSecurity.h>
 
 #define MAX_APP_STR_LEN 64
 #define MAX_NUM_FS 10
@@ -231,30 +233,49 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
      * for a genuine Volume Up press, skipping every other key (notably the
      * power key used to switch the device on) rather than being fooled by it.
      * Volume Up (the official recovery key slot) opens the boot menu; no Volume
-     * Up within the window launches the fixed Android entry.
+     * Up within the window boots the stored entries in order when password
+     * protection is disabled, or the fixed Android entry when it is enabled.
      */
     MenuRequested = WaitForVolumeUpKey (1000);
     DEBUG ((EFI_D_INFO, "SFB: power-on volume-up detected=%u\n", MenuRequested));
 
     /*
-     * Now bring up the embedded FAT/USB stack so both the default entry and the
-     * menu can see every FAT32 volume, including one on a USB drive.
+     * Now bring up the embedded filesystem stack for supported UFS volumes,
+     * then mount the efisp config
+     * container that holds the stored boot entries. Neither is fatal: without
+     * them the menu still offers fastboot.
      */
     Status = SfbStartFatStack ();
     if (EFI_ERROR (Status)) {
-      /* Credential/Android volume resolution below still fails closed. */
       DEBUG ((EFI_D_ERROR, "Unable to start the FAT stack: %r\n", Status));
     }
+    Status = SfbConfigStoreMount ();
+    if (EFI_ERROR (Status)) {
+      DEBUG ((EFI_D_ERROR, "Booting without a config store: %r\n", Status));
+    }
 
+    /*
+     * Pull the certificate classes into memory while the container is
+     * mounted: fastboot runs with the store unmounted, so the auth and
+     * boot cert pools must be resident before any of that happens. The
+     * device starts unprivileged; with no AUTH_CERTS there is nothing to
+     * authorize against, so entering the menu grants privilege directly.
+     */
+    SfbSecurityLoadCerts ();
+    if (!SfbSecurityAuthEnabled ()) {
+      SfbSecurityGrantPrivilege ();
+    }
+    /* Publish the status protocol for launched applications. */
+    (VOID)SfbSecurityInstallProtocol ();
     SfbAuthInitialize ();
     FastbootSetAuthorizationCheck (SfbAuthIsUnlocked);
-    /* No password preserves the existing saved-default behavior. With a
+    /* No password preserves the upstream ordered startup behavior. With a
      * configured gate, unattended boot always takes the fixed Android path. */
     if (!MenuRequested) {
       if (SfbAuthIsUnlocked ()) {
-        /* Preserve the original behavior: a returned default launch proceeds
+        /* Preserve the upstream behavior: returned startup launches proceed
          * to the menu, rather than switching to a hard-coded Android path. */
-        SfbLaunchDefaultEntry ();
+        SfbRunStartup (FALSE);
       } else {
         AndroidAttempted = TRUE;
         Status = SfbLaunchAndroid (FALSE);
@@ -288,6 +309,9 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
 
       SfbShowFastbootMode ();
       DEBUG ((EFI_D_INFO, "Boot menu requested fastboot\n"));
+      /* Fastboot may rewrite or erase efisp underneath the container: drop
+       * the FAT view first and pick it up again afterwards. */
+      SfbConfigStoreUnmount ();
       Status = FastbootInitialize ();
       if (EFI_ERROR (Status)) {
         DEBUG ((EFI_D_ERROR, "Failed to Launch Fastboot App: %d\n", Status));
@@ -295,6 +319,8 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
       }
       /* Fastboot exited back to the menu; loop around and show it again. */
       DEBUG ((EFI_D_INFO, "Fastboot exited to the boot menu\n"));
+      (VOID)SfbConfigStoreMount ();
+      (VOID)SfbLoadStoredEntries (SfbEntries ());
     }
   }
 

@@ -6,7 +6,7 @@
 
 `gbl_root_canoe` 是一个基于 EDK2 的工作区，用于修补高通 ABL 内的 EFI 程序。它利用 GBL (Generic Bootloader Loader) 漏洞，让真实 ABL 从原始 `efisp` 分区加载内嵌的 **superfastboot BDS**，BDS 再扫描兼容分区（ext4/fat32）获取启动项并链式启动——主要目的是在骁龙 8 Gen 5 / 8 Elite (Gen 5) 设备上实现**假回锁**（绕过 Bootloader 的解锁状态检测）。
 
-`BDS.efi` 以原始方式刷入 `efisp` 分区；破解后的 ABL（`boot.efi`）和启动项列表（`BOOTENTRIES`）存放在 `persist` 分区的 `efisp/` 目录下。
+`BDS.efi` 以原始方式刷入 `efisp` 分区前 1 MiB，剩余空间用作 FAT 配置容器。破解后的 ABL（`boot.efi`）放在 `persist/efisp/`，随包提供的 `ENTRIES.CFG` 放在 `persist` 卷根目录；BDS 扫描后将启动顺序保存在配置容器的 `CONFIG/ENTRIES.CFG`。详见 [BDS 配置存储](submodules/uefi/docs/sfb-config-store_zh.md)。
 
 ---
 
@@ -55,7 +55,7 @@
 
 **刷入及使用流程：**
 在使用 Root 管理器（KernelSU/Magisk/APatch）刷入该压缩包时，脚本会通过音量键与您交互：
-- **按音量上键 (首次全新安装)：** 脚本会提取当前槽位的 `.abl`，破解为 `boot.efi`，将 `boot.efi` / `LinuxLoader.efi` / `BOOTENTRIES` 放入 `/mnt/vendor/persist/efisp/`，并将 `BDS.efi` 刷入 `efisp`。完成后，请重启手机进入 Recovery 模式**格式化 Data**。开机后，请再次刷入本模块（第二次刷入时按音量下键）以走完完整安装流程。
+- **按音量上键 (首次全新安装)：** 脚本会提取当前槽位的 `.abl`，破解为 `boot.efi`，将 `boot.efi` / `LinuxLoader.efi` 和工具放入 `/mnt/vendor/persist/efisp/`，将 `ENTRIES.CFG` 放入 `/mnt/vendor/persist/`，并将 `BDS.efi` 刷入 `efisp`。完成后，请重启手机进入 Recovery 模式**格式化 Data**。开机后，请再次刷入本模块（第二次刷入时按音量下键）以走完完整安装流程。
 - **按音量下键 (非首次安装的日常 OTA 保留)：** 安装 OTA 更新补丁。每次 OTA 后，打开模块 WebUI 重新刷写以保留 BL 版本。
 
 ### 2. 使用 PC 工具包 (Linux / Windows)
@@ -66,7 +66,7 @@
 3. **Linux 平台：** 开启终端执行 `bash build.sh`。**Windows 平台：** 双击运行 `build.bat`。
 4. 脚本会提取并破解 ABL，输出 `ABL.efi`（假回锁）和 `ABL_original.efi`（原版），`BDS.efi` 已附带。请查看 `patch_log.txt`，若显示 "Warning: Failed to patch ABL GBL"，则该 ABL 没有漏洞，需将 `abl` 分区降级为带有 GBL 漏洞的旧版本 ABL。
 
-随后手动完成安装（完整步骤见 [Wiki](https://github.com/superturtlee/gbl_root_canoe/wiki)）：将 `ABL.efi` 复制到 `/mnt/vendor/persist/efisp/`，创建 `BOOTENTRIES`，`sync`，再将 `BDS.efi` 刷入 `efisp`（`dd if=BDS.efi of=/dev/block/by-name/efisp bs=4M`）。
+随后手动完成安装（完整步骤见 [Wiki](https://github.com/superturtlee/gbl_root_canoe/wiki)）：将 `ABL.efi` 复制为 `/mnt/vendor/persist/efisp/boot.efi`，将工具包的 `ENTRIES.CFG` 复制到 `/mnt/vendor/persist/`，`sync`，再将 `BDS.efi` 刷入 `efisp`（`dd if=BDS.efi of=/dev/block/by-name/efisp bs=4096 conv=notrunc,fsync`）。只写入 BDS 文件本身长度，以保留 1 MiB 之后的配置容器。
 
 ### 3. OTA 升级
 重启进行 OTA 更新前，使用模块 WebUI 刷写以保留旧版本 ABL。“更新 efisp”默认开启；跨版本升级时请保持开启，否则可能卡一屏。
@@ -74,9 +74,11 @@
 ### 4. superfastboot 使用方法
 模块 WebUI 的“Superfastboot 密码保护”可设置 **6–64 位数字密码**，两次输入一致后保存，下次开机生效。验证位于进入整个 Superfastboot 交互环境之前，覆盖启动菜单、其他系统启动、文件浏览、USB 导出及 Fastboot。`/mnt/vendor/persist/efisp/menu_password` 与修补后的 `boot.efi` 同目录，只保存 16 字节随机盐和 SHA-256 校验值，权限 `0600`，不会将明文密码写入文件或模块日志。模块更新和 OTA 刷写保留此文件。
 
-**未设置密码时密码保护关闭，高级操作无需验证，并保留原有默认启动项行为；设置密码后启用密码保护。** 密码保护启用时，正常开机直接启动内置 persist 分区的 `efisp/boot.efi`，无需输入密码。开机按 **音量上** 请求启动菜单时，先验证密码：音量键选择 **0–9、删除一位、确认密码或启动安卓**，电源键确认。非空错误输入均计错，包括不足 6 位的输入；本次开机累计三次失败、空密码确认、文件无效、取消或输入空闲 30 秒，均只启动安卓。清除密码会在下次开机关闭密码保护。无法读取密码文件的 I/O 错误不视为“未设置”。
+**未设置密码时密码保护关闭，按保存的启动项顺序依次尝试启动；设置密码后启用密码保护。** 密码保护启用时，正常开机直接启动内置 persist 分区的 `efisp/boot.efi`，无需输入密码。开机按 **音量上** 请求启动菜单时，先验证密码：音量键选择 **0–9、删除一位、确认密码或启动安卓**，电源键确认。非空错误输入均计错，包括不足 6 位的输入；本次开机累计三次失败、空密码确认、文件无效、取消或输入空闲 30 秒，均只启动安卓。清除密码会在下次开机关闭密码保护。无法读取密码文件的 I/O 错误不视为“未设置”。
 
-密码保护启用且未验证时，不会根据保存的默认启动项启动其他系统，也不会加载 `DRIVER.LIST`；启动菜单、EFI/驱动加载、文件浏览、USB 导出及 BDS Fastboot 的 USB 启动和全部指令分发均检查授权。启动程序失败或返回后，沿用原版进入菜单的流程，进入前仍须通过密码验证；无法验证且安卓也无法启动时，沿用原版清理并返回上层固件的处理，不新增无限循环。
+密码保护启用且未验证时，不会根据保存的启动项列表启动其他系统，也不会加载 `DRIVER.LIST`；启动菜单、EFI/驱动加载、文件浏览、USB 导出及 BDS Fastboot 的 USB 启动和全部指令分发均检查授权。启动程序失败或返回后，沿用原版进入菜单的流程，进入前仍须通过密码验证；无法验证且安卓也无法启动时，沿用原版清理并返回上层固件的处理，不新增无限循环。
+
+上游的证书控制独立生效：通过 PIN 验证后，`AUTH_CERTS` 仍要求挑战应答授权才允许高级操作；`BOOT_CERTS` 仍校验 EFI 镜像签名，包括固定路径的 Android 启动程序。详见 [BDS 安全模型](submodules/uefi/docs/sfb-security.md)。
 
 此密码保护仅控制本项目 BDS；厂商 ABL 的独立 Fastboot/Recovery、其他固件和 Root 修改 persist 不受其控制。已有 ABL 补丁仍包含启用厂商 Fastboot 的逻辑。六位数字密码的散列不能抵御读取文件后的离线枚举，较长密码可提高这一成本。
 
@@ -104,4 +106,4 @@
 1. `BDS.efi`：superfastboot BDS，以原始方式刷入 `efisp` 分区。
 2. `boot.efi` / `ABL.efi`：带假回锁的破解 ABL（模块中名为 `boot.efi`；toolkit 中名为 `ABL.efi`），存放在 `persist` 的 `efisp/` 下。
 3. `LinuxLoader.efi` / `ABL_original.efi`：原始未破解 ABL。用于分析，**不要刷入 `efisp`**。
-4. `BOOTENTRIES`：启动项列表，格式 `<名称>:<相对 efisp/ 的路径>`。
+4. `ENTRIES.CFG`：卷根目录的启动项列表，格式 `<名称>:[(磁盘,分区)]<卷内绝对路径> [参数]`；名称中的 `\` 表示分级菜单。efisp 配置容器中的 `CONFIG/ENTRIES.CFG` 保存生成的启动顺序。

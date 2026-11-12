@@ -37,10 +37,21 @@ def main():
                 "EmbeddedPkg/Include", "ArmPkg/Include"]
     flags = ["-fshort-wchar", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
              "-Wno-unused-parameter"] + [f"-I{EDK / item}" for item in includes]
+    # Distro GCC defaults to PIE, which makes EDK2 hide libc declarations.
+    # These executables are ordinary host harnesses and do not need PIE.
+    host_flags = flags + (["-fno-pie", "-no-pie"] if os.name != "nt" else [])
     with tempfile.TemporaryDirectory(prefix="canoe-password-") as directory:
         tmp = Path(directory)
         library = tmp / ("password.dll" if os.name == "nt" else "password.so")
-        run(cc, *flags, "-shared", "-fPIC", str(APP / "SuperFbPassword.c"), "-o", str(library))
+        # EDK2's X64 header hides PIC symbols on ELF. Export only this test
+        # translation unit so ctypes can call the unchanged production code.
+        password_source = tmp / "password_exports.c"
+        password_source.write_text(
+            '#include <Uefi.h>\n#if defined(__GNUC__)\n'
+            '#pragma GCC visibility push(default)\n#endif\n'
+            f'#include "{(APP / "SuperFbPassword.c").as_posix()}"\n',
+            encoding="utf-8")
+        run(cc, *flags, "-shared", "-fPIC", str(password_source), "-o", str(library))
         lib = ctypes.CDLL(str(library))
         digest_type = ctypes.c_uint8 * 32
         lib.SfbPasswordHash.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_size_t,
@@ -81,7 +92,7 @@ def main():
             _ctypes.FreeLibrary(lib._handle)
 
         harness = tmp / ("gate.exe" if os.name == "nt" else "gate")
-        run(cc, *flags, str(ROOT / "tests/password_gate_harness.c"),
+        run(cc, *host_flags, str(ROOT / "tests/password_gate_harness.c"),
             str(APP / "SuperFbPassword.c"), "-o", str(harness))
         print(run(str(harness)).strip())
 
@@ -89,18 +100,24 @@ def main():
         # require generated values in these host-side control-flow tests.
         (tmp / "AutoGen.h").write_bytes(b"#include <Uefi.h>\n")
         loader_harness = tmp / ("loader.exe" if os.name == "nt" else "loader")
-        run(cc, *flags, "-Wno-attributes", "-DMDEPKG_NDEBUG", f"-I{tmp}",
+        run(cc, *host_flags, "-Wno-attributes", "-DMDEPKG_NDEBUG", f"-I{tmp}",
             f"-I{EDK / 'QcomModulePkg/Library'}",
             f"-I{EDK / 'QcomModulePkg/Include/Library'}",
             str(ROOT / "tests/loader_return_harness.c"), "-o", str(loader_harness))
         print(run(str(loader_harness)).strip())
+
+        entry_harness = tmp / ("entry.exe" if os.name == "nt" else "entry")
+        run(cc, *host_flags, "-DMDEPKG_NDEBUG", "-ffunction-sections", "-fdata-sections",
+            "-Wl,--gc-sections", str(ROOT / "tests/entry_launch_harness.c"),
+            "-o", str(entry_harness))
+        print(run(str(entry_harness)).strip())
 
         menu_source = (APP / "SuperFbMenu.c").read_text(encoding="utf-8")
         key_function = menu_source.split("SFB_KEY\nSfbWaitForKey", 1)[1].split("/* ---- drawing", 1)[0]
         key_header = '#include "SuperFbMenu.h"\n#include <Library/DebugLib.h>\n#include <Library/UefiBootServicesTableLib.h>\n#include <Protocol/SimpleTextIn.h>\nSFB_KEY\nSfbWaitForKey' + key_function
         (tmp / "SfbWaitForKeyUnderTest.h").write_bytes(key_header.encode())
         key_harness = tmp / ("key.exe" if os.name == "nt" else "key")
-        run(cc, *flags, "-DMDEPKG_NDEBUG", f"-I{tmp}", f"-I{APP}",
+        run(cc, *host_flags, "-DMDEPKG_NDEBUG", f"-I{tmp}", f"-I{APP}",
             str(ROOT / "tests/key_timeout_harness.c"), "-o", str(key_harness))
         print(run(str(key_harness)).strip())
 
