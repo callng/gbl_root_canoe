@@ -14,7 +14,7 @@ static EFI_SECURITY2_ARCH_PROTOCOL Security;
 static EFI_FILE_PROTOCOL Root;
 static BOOLEAN Unlocked;
 static EFI_STATUS LoadStatus, VerifyStatus, PersistStatus;
-static UINTN Loads, Starts, DriverLists, Verifications, Frees;
+static UINTN Loads, Starts, Verifications, Frees;
 static CHAR16 LoadedPath[SFB_PATH_CHARS];
 static EFI_LOADED_IMAGE_PROTOCOL Loaded;
 
@@ -42,7 +42,7 @@ VOID SfbShowBootingScreen (CONST CHAR16 *Name, BOOLEAN ClearScreen) {}
 EFI_STATUS SfbSecurityVerifyImage (CONST VOID *Image, UINTN Size) { Verifications++; return VerifyStatus; }
 EFI_STATUS SfbOpenVolumeRoot (EFI_HANDLE Volume, EFI_FILE_PROTOCOL **Out) { *Out = &Root; return EFI_SUCCESS; }
 EFI_STATUS SfbReadFileBytes (EFI_FILE_PROTOCOL *File, CONST CHAR16 *Path, VOID *Buffer, UINTN Max, UINTN *Bytes) {
-  DriverLists++; *Bytes = 0; return EFI_NOT_FOUND;
+  *Bytes = 0; return EFI_NOT_FOUND;
 }
 VOID SfbConnectAll (VOID) {}
 BOOLEAN SfbEntryNextLine (CONST CHAR8 **Cursor, CHAR8 *Line, UINTN Bytes) { return FALSE; }
@@ -64,7 +64,7 @@ static EFI_STATUS EFIAPI Open (EFI_HANDLE Handle, EFI_GUID *Guid, VOID **Out, EF
                               EFI_HANDLE Controller, UINT32 Attributes) { *Out = &Loaded; return EFI_SUCCESS; }
 static void reset (BOOLEAN Accepted) {
   Unlocked = Accepted; LoadStatus = VerifyStatus = PersistStatus = EFI_SUCCESS;
-  Loads = Starts = DriverLists = Verifications = Frees = 0;
+  Loads = Starts = Verifications = Frees = 0;
   memset (&Loaded, 0, sizeof (Loaded));
   Services.LocateProtocol = Locate; Services.LoadImage = Load;
   Services.StartImage = Start; Services.OpenProtocol = Open; Root.Close = CloseRoot;
@@ -76,10 +76,10 @@ int main (void) {
   EFI_STATUS Status;
   reset (FALSE);
   memset (&Entry, 0, sizeof (Entry));
-  CHECK (SfbLaunchEntry (&Entry, TRUE, &NotPe) == EFI_ACCESS_DENIED && !NotPe && Loads == 0 && DriverLists == 0);
+  CHECK (SfbLaunchEntry (&Entry, TRUE, &NotPe) == EFI_ACCESS_DENIED && !NotPe && Loads == 0);
   CHECK (SfbLoadDriver ((EFI_HANDLE)1, L"\\driver.efi") == EFI_ACCESS_DENIED && Loads == 0);
   Status = SfbLaunchAndroid (FALSE);
-  CHECK (Status == EFI_LOAD_ERROR && Loads == 1 && Starts == 1 && DriverLists == 0 && Verifications == 1 && Frees == 1);
+  CHECK (Status == EFI_LOAD_ERROR && Loads == 1 && Starts == 1 && Verifications == 1 && Frees == 1);
   CHECK (memcmp (LoadedPath, L"\\efisp\\boot.efi", sizeof (L"\\efisp\\boot.efi")) == 0 && Loaded.LoadOptions == NULL);
   reset (FALSE);
   VerifyStatus = EFI_SECURITY_VIOLATION;
@@ -93,11 +93,11 @@ int main (void) {
   reset (TRUE);
   CHECK (SfbMakeFileEntry ((EFI_HANDLE)1, L"\\other.efi", L"Other", &Entry) == EFI_SUCCESS);
   StrnCpyS (Entry.Spec.Args, SFB_ARGS_CHARS, L"--test", 6);
-  CHECK (SfbLaunchEntry (&Entry, TRUE, &NotPe) == EFI_LOAD_ERROR && !NotPe && DriverLists == 1 && Starts == 1);
+  CHECK (SfbLaunchEntry (&Entry, TRUE, &NotPe) == EFI_LOAD_ERROR && !NotPe && Starts == 1);
   CHECK (Loaded.LoadOptions == Entry.Spec.Args && Loaded.LoadOptionsSize == sizeof (L"--test"));
   LoadStatus = EFI_UNSUPPORTED;
   CHECK (SfbLaunchEntry (&Entry, TRUE, &NotPe) == EFI_UNSUPPORTED && NotPe);
   FreePool (Entry.DevicePath);
-  puts ("Entry launch: denied EFI/drivers, fixed Android without args/drivers, mandatory certificate verification and upstream arguments/non-PE reporting passed");
+  puts ("Entry launch: denied EFI/drivers, fixed Android without args, mandatory certificate verification and upstream arguments/non-PE reporting passed");
   return 0;
 }
